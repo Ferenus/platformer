@@ -14,7 +14,7 @@ SCREEN_W, SCREEN_H = 3440, 1440
 FPS = 60
 GRAVITY = 0.7
 PLAYER_SPEED = 5
-JUMP_FORCE = -14
+JUMP_FORCE = -18
 BULLET_SPEED = 12
 ENEMY_SPEED = 2
 NUM_ENEMIES = 10
@@ -52,31 +52,29 @@ def tile_background(surface, bg_img):
 #   E = floating platform (grass top)
 
 LEVEL_1 = [
-    #  0         1         2         3         4         5         6         7         8
-    #  0123456789012345678901234567890123456789012345678901234567890123456789012345678901
-    "..................................................................................",  # row 0
-    "..................................................................................",  # row 1
-    "..................................................................................",  # row 2
-    "..................................................................................",  # row 3
-    "..................................................................................",  # row 4
-    "..................................................................................",  # row 5
-    "..................................................................................",  # row 6
-    "..................................................................................",  # row 7
-    "..................................................................................",  # row 8
-    "..................................................................................",  # row 9
-    "..................................................................................",  # row 10
-    "..................................................................................",  # row 11
-    "..................................................................................",  # row 12
-    "..................................................................................",  # row 13
-    "...EEEE.......EEEE.......EEEE....GGGGG.....EEEE.......EEEE.......EEEE....GGGGG..",  # row 14
-    "..................................................................................",  # row 15
-    "........EEEE.......EEEE.......EEEE..........EEEE.......EEEE.......EEEE...........",  # row 16
-    "..................................................................................",  # row 17
-    "...EEEE.......EEEE.......EEEE..........EEEE.......EEEE.......EEEE................",  # row 18
-    "P...............................................................................T.",  # row 19
-    "................................................................................S.",  # row 20
-    "GGGGGGGGGG..GGGGGGGGG..GGGGGGGGGGGGGGGGGGGGGGGGGGG..GGGGGGGGG..GGGGGGGGGGGGGGGGGG",  # row 21
-    "DDDDDDDDDD..DDDDDDDDD..DDDDDDDDDDDDDDDDDDDDDDDDD..DDDDDDDDD..DDDDDDDDDDDDDDDD",  # row 22
+    ".............................................",  # row 0
+    ".............................................",  # row 1
+    ".............................................",  # row 2
+    ".............................................",  # row 3
+    ".............................................",  # row 4
+    ".............................................",  # row 5
+    ".............................................",  # row 6
+    ".............................................",  # row 7
+    ".............................................",  # row 8
+    ".............................................",  # row 9
+    ".............................................",  # row 10
+    ".............................................",  # row 11
+    ".............................................",  # row 12
+    ".............................................",  # row 13
+    "...EEEE.......EEEE.......EEEE....GGGGG......",  # row 14
+    ".............................................",  # row 15
+    "........EEEE.......EEEE.......EEEE..........",  # row 16
+    ".............................................",  # row 17
+    "...EEEE.......EEEE.......EEEE...............",  # row 18
+    "P..........................................T.",  # row 19
+    "...........................................S.",  # row 20
+    "GGGGGGGGGG..GGGGGGGGG..GGGGGGGGGGGGGGGGGGGGG",  # row 21
+    "DDDDDDDDDD..DDDDDDDDD..DDDDDDDDDDDDDDDDDDD",  # row 22
 ]
 
 LEVEL_W = max(len(row) for row in LEVEL_1) * TILE
@@ -117,6 +115,7 @@ class Player(pygame.sprite.Sprite):
 
         self.image = self.sprites_idle[0]
         self.rect = self.image.get_rect(topleft=(x, y))
+        self.spawn_pos = (x, y)
         self.vel_x = 0
         self.vel_y = 0
         self.on_ground = False
@@ -126,7 +125,6 @@ class Player(pygame.sprite.Sprite):
         self.alive = True
         self.hit_timer = 0
         self.health = 3
-        self.jumps_left = 2
         self.jump_pressed = False
 
     def take_hit(self):
@@ -153,10 +151,9 @@ class Player(pygame.sprite.Sprite):
             self.vel_x = PLAYER_SPEED
             self.facing_right = True
         jump_key = keys[pygame.K_UP] or keys[pygame.K_w]
-        if jump_key and not self.jump_pressed and self.jumps_left > 0:
+        if jump_key and not self.jump_pressed and self.on_ground:
             self.vel_y = JUMP_FORCE
             self.on_ground = False
-            self.jumps_left -= 1
         self.jump_pressed = jump_key
 
         # gravity
@@ -177,9 +174,16 @@ class Player(pygame.sprite.Sprite):
         self.rect.y += self.vel_y
         self._collide_y(platforms)
 
-        # fell off bottom of map
+        # fell off bottom of map — lose a life and respawn
         if self.rect.top > LEVEL_H + 200:
-            self.alive = False
+            self.health -= 1
+            if self.health <= 0:
+                self.alive = False
+            else:
+                self.rect.topleft = self.spawn_pos
+                self.vel_x = 0
+                self.vel_y = 0
+                self.hit_timer = 60
 
         # animation
         self._animate()
@@ -200,7 +204,6 @@ class Player(pygame.sprite.Sprite):
                     self.rect.bottom = p.rect.top
                     self.vel_y = 0
                     self.on_ground = True
-                    self.jumps_left = 2
                 elif self.vel_y < 0:
                     self.rect.top = p.rect.bottom
                     self.vel_y = 0
@@ -252,6 +255,8 @@ class Enemy(pygame.sprite.Sprite):
         self.image = self.sprites_walk[0]
         self.rect = self.image.get_rect(topleft=(x, y))
         self.vel_x = ENEMY_SPEED
+        self.vel_y = 0
+        self.on_ground = False
         self.anim_index = 0
         self.anim_timer = 0
         self.alive = True
@@ -283,17 +288,20 @@ class Enemy(pygame.sprite.Sprite):
                     self.vel_x = ENEMY_SPEED
 
         # apply gravity
-        self.rect.y += 4
-        on_ground = False
+        self.vel_y += GRAVITY
+        if self.vel_y > 18:
+            self.vel_y = 18
+        self.rect.y += self.vel_y
+        self.on_ground = False
         for p in platforms:
             if self.rect.colliderect(p.rect):
-                if self.rect.bottom > p.rect.top:
+                if self.vel_y > 0 and self.rect.bottom > p.rect.top:
                     self.rect.bottom = p.rect.top
-                    on_ground = True
+                    self.vel_y = 0
+                    self.on_ground = True
 
-        # edge detection - turn around near platform edges
-        if on_ground:
-            # check if there's ground ahead
+        # turn around at edges
+        if self.on_ground:
             test_x = self.rect.centerx + (TILE if self.vel_x > 0 else -TILE)
             ground_ahead = False
             for p in platforms:
@@ -301,7 +309,17 @@ class Enemy(pygame.sprite.Sprite):
                     ground_ahead = True
                     break
             if not ground_ahead:
-                self.vel_x = -self.vel_x
+                ground_y = (len(LEVEL_1) - 2) * TILE
+                if self.rect.bottom == ground_y:
+                    # never fall into death pits
+                    self.vel_x = -self.vel_x
+                elif random.random() > 0.20:
+                    # 80% turn around, 20% walk off
+                    self.vel_x = -self.vel_x
+
+        # random jump
+        if self.on_ground and random.randint(0, 120) == 0:
+            self.vel_y = JUMP_FORCE * 0.8
 
         # animate
         self.anim_timer += 1
@@ -402,14 +420,31 @@ def spawn_enemies(enemy_zones, count):
 # HUD
 # ---------------------------------------------------------------------------
 
+def draw_heart(surface, x, y, size):
+    color = (220, 20, 60)
+    w = int(size * 1.2)
+    r = w // 4
+    cx = x + w // 2
+    pygame.draw.circle(surface, color, (x + r, y + r), r)
+    pygame.draw.circle(surface, color, (x + w - r, y + r), r)
+    pygame.draw.polygon(surface, color, [
+        (x, y + r),
+        (cx, y + size),
+        (x + w, y + r),
+    ])
+
+
 def draw_hud(surface, player, enemies_left):
     font = pygame.font.SysFont("Arial", 24)
-    # health
-    hp_text = font.render(f"HP: {'<3 ' * player.health}", True, (255, 255, 255))
-    surface.blit(hp_text, (10, 10))
+    # hearts
+    heart_size = 32
+    heart_gap = 8
+    heart_w = int(heart_size * 1.2)
+    for i in range(player.health):
+        draw_heart(surface, 10 + i * (heart_w + heart_gap), 10, heart_size)
     # enemies remaining
     en_text = font.render(f"Enemies: {enemies_left}", True, (255, 255, 255))
-    surface.blit(en_text, (10, 40))
+    surface.blit(en_text, (10, 50))
 
 
 # ---------------------------------------------------------------------------
